@@ -29,8 +29,8 @@
         <div class="hero-copy">
           <p class="eyebrow"><span class="eyebrow-line"></span> YOUR NEXT STORY STARTS HERE</p>
           <h1 id="heroTitle">Find places<br />that <em>stay</em> with you.</h1>
-          <p class="hero-description">Explore Karnataka’s quiet lakes, ancient temples and wild coastlines. Search by what moves you; compare every result with a clear reason for its rank.</p>
-          <div class="hero-note"><span class="sparkle" aria-hidden="true">✳</span> Thoughtfully ranked, always transparent</div>
+          <p class="hero-description">Explore Karnataka’s quiet lakes, ancient temples and wild coastlines. Search by place or city, narrow your choices, and see Engine 2’s ranking when its API is running.</p>
+          <div class="hero-note"><span class="sparkle" aria-hidden="true">✳</span> Search, filter and compare destinations</div>
         </div>
         <div class="hero-art" aria-hidden="true">
           <div class="sun"></div>
@@ -48,7 +48,7 @@
             <label for="query">What would you like to find?</label>
             <div class="query-row">
               <span class="search-icon" aria-hidden="true">⌕</span>
-              <input id="query" name="query" type="search" placeholder="Try “waterfalls near Shivamogga”" autocomplete="off" aria-autocomplete="list" aria-controls="placeSuggestions" aria-expanded="false" />
+              <input id="query" name="query" type="search" placeholder="Try “Jog Falls” or “Hampi”" autocomplete="off" aria-autocomplete="list" aria-controls="placeSuggestions" aria-expanded="false" />
               <button class="search-button" type="submit">Find places <span aria-hidden="true">→</span></button>
             </div>
             <div class="suggestions" id="placeSuggestions" role="listbox" aria-label="Place suggestions" hidden></div>
@@ -94,7 +94,7 @@
               <option value="rating">Top rated</option>
               <option value="popularity">Most loved</option>
               <option value="fee">Lowest entry fee</option>
-              <option value="name">A to Z</option>
+              <option value="distance">Distance from Hubballi</option>
             </select>
           </div>
         </div>
@@ -116,8 +116,8 @@
         <div class="how-intro"><p class="section-kicker">NO MYSTERY IN THE ORDER</p><h2>A little more context.<br /><em>A lot more confidence.</em></h2></div>
         <div class="how-steps">
           <article><span class="step-number">01</span><h3>Tell us what matters</h3><p>Search in your own words, then narrow by location, category, fee or rating.</p></article>
-          <article><span class="step-number">02</span><h3>Understand the results</h3><p>When Engine 2 is connected, its ranking score and available rating, popularity and preference signals appear with each result.</p></article>
-          <article><span class="step-number">03</span><h3>Compare another order</h3><p>Switch from best match to rating, popularity, entry fee or name without changing your search.</p></article>
+          <article><span class="step-number">02</span><h3>Understand the results</h3><p>With Engine 2 running, each live result shows its score and the available scoring details.</p></article>
+          <article><span class="step-number">03</span><h3>Compare another order</h3><p>Switch from best match to rating, popularity, entry fee or distance from Hubballi.</p></article>
         </div>
       </section>
     </main>
@@ -134,12 +134,12 @@
       <div class="admin-dialog-content">
         <p class="section-kicker">PLACE CATALOGUE</p>
         <h2 id="adminDialogTitle">Admin access</h2>
-        <p class="admin-intro">Sign in to manage destination records. The server must verify this role on every admin request.</p>
+        <p class="admin-intro">The current Engine 2 server does not provide authenticated admin endpoints. Catalogue changes stay disabled until the team adds server-side sign-in and authorization.</p>
+        <p class="form-message" id="adminMessage" role="status"></p>
         <form id="adminLoginForm" class="admin-form">
           <label for="adminPassword">Admin password</label>
           <input id="adminPassword" name="password" type="password" required autocomplete="current-password" />
           <button class="search-button" type="submit">Continue <span aria-hidden="true">→</span></button>
-          <p class="form-message" id="adminMessage" role="status"></p>
         </form>
         <div class="admin-tools" id="adminTools" hidden>
           <div class="admin-tools-heading"><h3>Manage a place</h3><button class="text-button" id="adminLogout" type="button">Sign out</button></div>

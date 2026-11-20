@@ -1,59 +1,74 @@
-# Engine 3 / Engine 2 API Handoff
+# Engine 3 and Engine 2 API Contract
 
-The Engine 3 front end currently expects these JSON endpoints on `http://localhost:3000/api`. The Engine 2 owner should confirm the contract before implementation or adjust `engine3/app.js` to match the agreed server routes.
+Engine 3 is the web interface. It sends search requests to the Node server supplied for Engine 2 and displays its scores and ordering. The current server listens on `http://localhost:5000` and enables cross-origin requests for local frontend development.
 
-## Filter options
+## Search and ranking
 
-`GET /api/places/options`
+`POST /api/rank`
 
-Return active city and category options for the filter controls:
-
-```json
-{"cities":["Dandeli","Hampi"],"categories":["Historical","Nature","Temple"]}
-```
-
-## Public search
-
-`GET /api/places/search?q=&city=&category=&preferredCategory=&maxBudget=&minRating=&sort=`
-
-The API applies server-side input validation and filters, retrieves active places from Engine 1, calls the C++ ranking module, and returns results in the requested order. `maxBudget=0` is a valid free-entry filter.
+Engine 3 sends JSON:
 
 ```json
 {
-  "count": 1,
-  "weights": {"rating": 0.5, "popularity": 0.3, "preference": 0.2},
+  "keyword": "falls",
+  "category_id": 3,
+  "max_budget": 100,
+  "max_distance": -1,
+  "min_rating": 4,
+  "top_k": 500,
+  "sort_by": "score"
+}
+```
+
+The current backend accepts `score`, `rating`, `distance`, `fee`, and `popularity` sort values. `max_budget` and `max_distance` use `-1` to mean no limit. `category_id` is the preferred category used in scoring, not a strict category filter. Scores are in `[0,1]`; the response contains:
+
+```json
+{
+  "metadata": {
+    "candidate_pool_size": 1,
+    "top_k_requested": 500,
+    "returned_count": 1,
+    "weights_applied": {
+      "wRating": 0.4,
+      "wPopularity": 0.3,
+      "wPreference": 0.2,
+      "wDistance": 0.1
+    }
+  },
   "results": [
     {
-      "place_id": 12,
-      "place_name": "Example Falls",
-      "city": "Yellapur",
-      "state": "Karnataka",
-      "categories": ["Nature", "Waterfall"],
-      "description": "A forest waterfall.",
-      "rating": 4.5,
-      "popularity": 81,
-      "entry_fee": 30,
-      "score": 0.89,
-      "match_quality": 0.82,
-      "score_components": {
-        "rating": 0.9,
-        "popularity": 0.81,
-        "preference_match": 1
+      "place_id": 23,
+      "place_name": "Jog Falls Viewpoint",
+      "city": "Shivamogga",
+      "category_name": "Nature",
+      "rating": 4.7,
+      "popularity": 93,
+      "entry_fee": 50,
+      "composite_score": 0.82,
+      "breakdown": {
+        "norm_rating": 0.94,
+        "norm_popularity": 0.93,
+        "preference_match": 1,
+        "norm_proximity": 0.68
       }
     }
   ]
 }
 ```
 
-The UI sort values are `score`, `rating`, `popularity`, `fee`, and `name`. `score` must preserve Engine 2 / C++ ordering. Alternate modes should be applied by the backend so the UI does not become the source of ranking logic.
+Engine 3 maps `composite_score` to its score display and `breakdown` to the detail view. It requests up to 500 candidates so the current city and strict-category selections can be applied without reordering the backend's ranked list. This assumes the current 34-place catalogue; if the catalogue grows beyond that limit, Engine 2 should add city and strict-category filters to `/api/rank` and return a total count.
 
-## Admin access and catalogue management
+The current UI's minimum-rating and fee controls map to `min_rating` and `max_budget`. The backend excludes records over budget. The UI's preferred-category control maps to `category_id` and affects ranking. Its strict city/category display filters are applied after Engine 2 returns the ordered candidate list because the current `/api/rank` route has no city or strict-category filter.
 
-- `POST /api/auth/login` with `{"password":"..."}` returns `{"token":"...","role":"admin"}` only after server-side authentication.
-- `GET /api/auth/session` accepts `Authorization: Bearer <token>` and returns `{"role":"admin"}` for a valid admin session.
-- `POST /api/auth/logout` invalidates the session/token.
-- `GET /api/admin/places` accepts the same admin bearer token and returns `{"places":[...]}` for the admin catalogue.
-- `POST /api/admin/places` accepts a place record and requires a valid admin bearer token. Validate all fields on the server and in Engine 1 constraints.
-- `PATCH /api/admin/places/:id` accepts validated field updates. Sending `{"status":"INACTIVE"}` deactivates the place instead of deleting history.
+## Filter options and autocomplete
 
-Return errors as JSON, for example `{"message":"entry_fee must be zero or greater"}`, with suitable HTTP status codes. Do not rely on front-end validation for data integrity or access control.
+- `GET /api/categories` returns `{"categories":[{"category_id":1,"category_name":"Beach"}]}`.
+- `GET /api/places?active=true` returns `{"count":34,"places":[...]}`. Engine 3 uses this to build city choices.
+- `GET /api/places/autocomplete?q=ham` returns `{"suggestions":[{"place_id":16,"place_name":"...","city":"Hampi","category_name":"Historical"}]}`.
+
+## Current integration limits
+
+- The supplied `server.js` currently serves a hard-coded in-memory dataset. Although the ZIP includes Engine 1 SQL files, this server does not connect to the relational database.
+- The server has no authenticated admin login/session API. Its place insert and update routes are not protected by admin authorization, so Engine 3 leaves catalogue editing disabled and does not call those routes.
+- City and strict category filtering happen in the browser after Engine 2 ranking because the current rank route does not implement those filters. The backend should add these filters before the dataset grows beyond the requested Top-K limit.
+- The previous Python contract describes a different endpoint and payload. For this frontend integration, the Node server routes above are the reference. Engine 2 should confirm before changing them.

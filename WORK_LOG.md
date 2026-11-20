@@ -1,5 +1,18 @@
 # Engine 3 Work Log
 
+## 2026-11-20
+
+- Confirmed the project theme is Theme 2 — Search and Ranking System from the orientation deck; Engine 2 owns Logic & Rule, and Engine 3 owns Interface & Access.
+- Connected Engine 3 to the Node API in the teammate ZIP: `/api/rank`, `/api/categories`, `/api/places`, and `/api/places/autocomplete` on port 5000.
+- Adapted Engine 2's `composite_score`, `breakdown`, `category_name`, `metadata`, and `weights_applied` response fields for the existing cards and detail dialog.
+- Added server autocomplete suggestions and mapped the sort control to the supported score, rating, popularity, fee, and distance modes.
+- Disabled catalogue login/edit actions because the supplied API has no authenticated admin routes; the UI must not write through its unprotected routes.
+- Documented current integration limits: the Engine 2 server uses in-memory sample data and doesn't connect to the SQL database; city and strict category filters are applied in the UI because the rank route doesn't accept them.
+- Validation issue found in Engine 2's server: invalid numeric budget, distance, and minimum-rating strings can bypass current checks. Reported as an Engine 2 follow-up; no backend file was changed from this frontend task.
+- Removed stale instructions for an older mock API; the only supported live integration for this build is the teammate's Engine 2 Node API.
+- Passed `node --check app.js` and `git diff --check`. Smoke-checked the supplied Engine 2 Node server's health, categories, places, autocomplete, ranking, budget and rating filters.
+- Could not complete a browser visual check in this environment because the browser sandbox rejects the local Windows drive path; the interface still needs a local browser run alongside Engine 2.
+
 ## 2026-11-12
 
 - Built the responsive tourist-place search interface, filters, ranked result cards, and place-details preview.

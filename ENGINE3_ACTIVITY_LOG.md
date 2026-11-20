@@ -3,9 +3,37 @@
 **Project:** Tourist Place Search and Ranking System  
 **Engine:** 3 — Interface and Access / Front End  
 **Owner:** Vivek  
-**Log location:** `engine3/ENGINE3_ACTIVITY_LOG.md`
+**Log location:** `ENGINE3_ACTIVITY_LOG.md`
 
 This log records the front-end work, issues encountered, and fixes. Keep adding a dated entry when work is done.
+
+## 2026-11-20 — Engine 2 API integration
+
+### Work completed
+
+- Confirmed Theme 2 is Search and Ranking System. The orientation assigns Engine 2 to Logic & Rule and Engine 3 to Interface & Access.
+- Connected the frontend to Engine 2's Node API at `http://localhost:5000`.
+- Added category/city option loading, JSON POST search, ranking score/breakdown mapping, backend-supported sorting, and API autocomplete.
+- Disabled catalogue login/edit actions because the supplied backend has no authenticated admin API.
+- Updated the API contract and run instructions.
+- Removed an outdated mock-server instruction that no longer matched the current API integration.
+- Passed the frontend JavaScript syntax check and whitespace check. Smoke-checked Engine 2 health, categories, places, autocomplete, ranking, budget and rating filters using its supplied Node server.
+- Browser visual verification remains for the team to run locally because this environment cannot open the local Windows drive in its browser sandbox.
+
+### Issues and fixes
+
+- Engine 2 uses `/api/rank` with POST JSON and returns `composite_score`/`breakdown`, while Engine 3 expected `/places/search` with different fields. Adapted the request, response and score display in `app.js`.
+- City and strict-category filters are absent from Engine 2's rank route. Engine 3 preserves the backend result order and applies those display filters to the returned catalogue. The API contract records the need for Engine 2 to add server-side filters before the catalogue exceeds the requested Top-K.
+- Backend write endpoints have no role verification. Engine 3 keeps admin changes disabled and does not call the unprotected routes.
+- Malformed numeric search values can bypass validation in Engine 2. This needs a backend fix; no Engine 2 source was modified.
+
+### Status / next step
+
+- Verify the integrated page against the teammate's actual Node server. Ask the Engine 2 owner to fix numeric validation, add city/strict-category filters, and implement authenticated admin endpoints if catalogue management is required.
+
+### Git commit
+
+- Pending integration checks.
 
 ## 2026-11-12 — Front-end implementation and image fix
 

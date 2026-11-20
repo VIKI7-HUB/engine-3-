@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:3000/api";
+const API_BASE = "http://localhost:5000";
 
 // Temporary presentation data. Engine 2's API becomes the source of results when available.
 const demoPlaces = [
@@ -68,6 +68,8 @@ let currentWeights = null;
 let currentOptions = { cities: [], categories: [] };
 let filterOptionsArePreview = true;
 let currentIsPreview = true;
+let categoryIdsByName = new Map();
+let suggestionRequestId = 0;
 let adminToken = sessionStorage.getItem("yatraAdminToken") || "";
 let adminPlaces = [];
 const TOO_MANY_RESULTS_THRESHOLD = 50;
@@ -107,12 +109,21 @@ function populateFilters(options) {
 
 async function loadFilterOptions() {
   try {
-    const response = await fetch(`${API_BASE}/places/options`, { headers: { Accept: "application/json" } });
-    if (!response.ok) throw new Error(`Filter options request failed (${response.status})`);
-    const options = await response.json();
-    if (!Array.isArray(options.cities) || !Array.isArray(options.categories)) throw new Error("Filter options response was invalid");
+    const [categoryResponse, placesResponse] = await Promise.all([
+      fetch(`${API_BASE}/api/categories`, { headers: { Accept: "application/json" } }),
+      fetch(`${API_BASE}/api/places?active=true`, { headers: { Accept: "application/json" } })
+    ]);
+    if (!categoryResponse.ok) throw new Error(`Category options request failed (${categoryResponse.status})`);
+    if (!placesResponse.ok) throw new Error(`Place options request failed (${placesResponse.status})`);
+    const categoryPayload = await categoryResponse.json();
+    const placesPayload = await placesResponse.json();
+    if (!Array.isArray(categoryPayload.categories) || !Array.isArray(placesPayload.places)) throw new Error("Engine 2 options response was invalid");
+    categoryIdsByName = new Map(categoryPayload.categories.map(item => [item.category_name, Number(item.category_id)]));
     filterOptionsArePreview = false;
-    populateFilters(options);
+    populateFilters({
+      cities: [...new Set(placesPayload.places.map(place => place.city).filter(Boolean))],
+      categories: categoryPayload.categories.map(item => item.category_name).filter(Boolean)
+    });
   } catch (error) {
     filterOptionsArePreview = true;
     populateFilters(optionsFromPlaces(demoPlaces));
@@ -145,23 +156,48 @@ function matchesPreview(place, filters) {
   return hasTextMatch && cityMatch && categoryMatch && preferenceMatch && budgetMatch && ratingMatch;
 }
 
-function paramsFromFilters(filters) {
-  const params = new URLSearchParams();
-  if (filters.query) params.set("q", filters.query);
-  if (filters.city) params.set("city", filters.city);
-  if (filters.category) params.set("category", filters.category);
-  if (filters.preferredCategory) params.set("preferredCategory", filters.preferredCategory);
-  if (filters.maxBudget !== "") params.set("maxBudget", filters.maxBudget);
-  if (filters.minRating !== "") params.set("minRating", filters.minRating);
-  params.set("sort", filters.sort);
-  return params;
+function placeForUi(place) {
+  const normalized = { ...place };
+  if (!Array.isArray(normalized.categories)) {
+    const category = normalized.category_name || [...categoryIdsByName].find(([, id]) => id === Number(normalized.category_id))?.[0];
+    normalized.categories = category ? [category] : [];
+  }
+  if (normalized.score === undefined && normalized.composite_score !== undefined) normalized.score = normalized.composite_score;
+  if (!normalized.score_components && normalized.breakdown) normalized.score_components = normalized.breakdown;
+  return normalized;
+}
+
+function resultsForUi(places, filters) {
+  return places.map(placeForUi).filter(place => {
+    const cityMatches = !filters.city || normalize(place.city) === normalize(filters.city);
+    const categoryMatches = !filters.category || categoriesOf(place).some(category => normalize(category) === normalize(filters.category));
+    return cityMatches && categoryMatches;
+  });
 }
 
 async function searchPlaces(filters) {
-  const response = await fetch(`${API_BASE}/places/search?${paramsFromFilters(filters)}`, { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`Search request failed (${response.status})`);
+  const preferredCategoryId = categoryIdsByName.get(filters.preferredCategory);
+  const response = await fetch(`${API_BASE}/api/rank`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      keyword: filters.query,
+      category_id: preferredCategoryId || 0,
+      max_budget: filters.maxBudget === "" ? -1 : Number(filters.maxBudget),
+      max_distance: -1,
+      min_rating: filters.minRating === "" ? 0 : Number(filters.minRating),
+      top_k: 500,
+      sort_by: filters.sort
+    })
+  });
   const payload = await response.json();
-  return Array.isArray(payload) ? { results: payload, weights: null } : { results: payload.results || [], weights: payload.weights || null };
+  if (!response.ok) throw new Error(payload.message || payload.error || `Search request failed (${response.status})`);
+  if (!Array.isArray(payload.results)) throw new Error("Engine 2 response did not include a results list");
+  return {
+    results: resultsForUi(payload.results, filters),
+    metadata: payload.metadata || {},
+    weights: payload.metadata?.weights_applied || null
+  };
 }
 
 function escapeHtml(value) {
@@ -235,7 +271,7 @@ function requestPhoto(place, container) {
 }
 
 function scoreValue(place) {
-  const rawScore = place.score ?? place.ranking_score;
+  const rawScore = place.score ?? place.ranking_score ?? place.composite_score;
   if (rawScore === null || rawScore === undefined || rawScore === "") return null;
   const score = Number(rawScore);
   return Number.isFinite(score) ? score : null;
@@ -317,8 +353,8 @@ async function runSearch() {
     const payload = await searchPlaces(filters);
     if (!Array.isArray(payload.results)) throw new Error("Search response did not include a results list");
     currentWeights = payload.weights || null;
-    if (!filterOptionsArePreview) elements.apiError.hidden = true;
-    renderResults(payload.results, { isPreview: false, totalCount: Number.isFinite(Number(payload.count)) ? Number(payload.count) : payload.results.length });
+    elements.apiError.hidden = true;
+    renderResults(payload.results, { isPreview: false, totalCount: payload.results.length });
   } catch (error) {
     currentWeights = null;
     elements.apiError.textContent = `Engine 2 search is unavailable. Showing the preview catalogue without ranking scores. ${error.message}`;
@@ -333,11 +369,22 @@ function showPlace(id) {
   if (!place) return;
   const score = scoreValue(place);
   const parts = place.score_components && typeof place.score_components === "object" ? place.score_components : null;
-  const componentRows = parts ? [
-    ["Rating", parts.rating, currentWeights?.rating],
-    ["Popularity", parts.popularity, currentWeights?.popularity],
-    ["Preference match", parts.preference_match, currentWeights?.preference]
-  ].filter(([, value]) => value !== undefined && value !== null).map(([label, value, weight]) => `<div class="breakdown-row"><span>${label}${Number.isFinite(Number(weight)) ? ` (weight ${Number(weight).toFixed(2)})` : ""}</span><strong>${escapeHtml(Number(value).toFixed(3))}</strong></div>`).join("") : "";
+  const componentLabels = {
+    raw_rating: "Visitor rating",
+    norm_rating: "Normalized rating",
+    weighted_rating: "Weighted rating",
+    raw_popularity: "Popularity",
+    norm_popularity: "Normalized popularity",
+    weighted_popularity: "Weighted popularity",
+    preference_match: "Preferred-category match",
+    weighted_preference: "Weighted preference match",
+    raw_distance_km: "Distance from Hubballi (km)",
+    norm_proximity: "Normalized proximity",
+    weighted_proximity: "Weighted proximity"
+  };
+  const componentRows = parts ? Object.entries(parts)
+    .filter(([, value]) => Number.isFinite(Number(value)))
+    .map(([key, value]) => `<div class="breakdown-row"><span>${escapeHtml(componentLabels[key] || key.replaceAll("_", " "))}</span><strong>${Number(value).toFixed(3)}</strong></div>`).join("") : "";
   const rankingMarkup = currentIsPreview
     ? '<p class="ranking-note">Preview data only. Engine 2 ranking is unavailable.</p>'
     : parts
@@ -352,23 +399,50 @@ function showPlace(id) {
   requestPhoto(place, elements.placeDialogContent);
 }
 
-function renderSuggestions() {
-  const query = normalize(elements.query.value);
+async function renderSuggestions() {
+  const requestId = ++suggestionRequestId;
+  const rawQuery = elements.query.value.trim();
+  const query = normalize(rawQuery);
   if (query.length < 2) { elements.suggestions.hidden = true; elements.query.setAttribute("aria-expanded", "false"); return; }
-  const matches = demoPlaces.filter(place => normalize(`${place.place_name} ${place.city} ${categoriesOf(place).join(" ")}`).includes(query) || query.split(" ").every(word => normalize(`${place.place_name} ${place.city} ${categoriesOf(place).join(" ")}`).includes(word))).slice(0, 5);
+
+  let matches;
+  if (!filterOptionsArePreview) {
+    try {
+      const response = await fetch(`${API_BASE}/api/places/autocomplete?q=${encodeURIComponent(rawQuery)}`, { headers: { Accept: "application/json" } });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || payload.error || `Autocomplete failed (${response.status})`);
+      if (!Array.isArray(payload.suggestions)) throw new Error("Engine 2 autocomplete response was invalid");
+      matches = payload.suggestions.map(placeForUi);
+    } catch {
+      matches = demoPlaces.filter(place => normalize(`${place.place_name} ${place.city} ${categoriesOf(place).join(" ")}`).includes(query) || query.split(" ").every(word => normalize(`${place.place_name} ${place.city} ${categoriesOf(place).join(" ")}`).includes(word))).slice(0, 5);
+    }
+  } else {
+    matches = demoPlaces.filter(place => normalize(`${place.place_name} ${place.city} ${categoriesOf(place).join(" ")}`).includes(query) || query.split(" ").every(word => normalize(`${place.place_name} ${place.city} ${categoriesOf(place).join(" ")}`).includes(word))).slice(0, 5);
+  }
+
+  if (requestId !== suggestionRequestId) return;
   elements.suggestions.innerHTML = matches.map(place => `<button class="suggestion-item" type="button" role="option" data-suggestion-id="${escapeHtml(place.place_id)}"><span class="suggestion-image photo-frame" data-kind="${kindFor(place)}"><img data-place-photo alt="" hidden /></span><span class="suggestion-label"><strong>${escapeHtml(place.place_name)}</strong><small>${escapeHtml(place.city)} · ${escapeHtml(categoriesOf(place)[0] || "Destination")}</small></span><span class="suggestion-arrow" aria-hidden="true">↗</span></button>`).join("");
   elements.suggestions.hidden = matches.length === 0;
   elements.query.setAttribute("aria-expanded", String(matches.length > 0));
-  elements.suggestions.querySelectorAll("[data-suggestion-id]").forEach(button => button.addEventListener("click", () => {
+  elements.suggestions.querySelectorAll("[data-suggestion-id]").forEach(button => button.addEventListener("click", async () => {
     const id = button.dataset.suggestionId;
-    const place = demoPlaces.find(item => String(item.place_id) === id);
-    elements.query.value = place?.place_name || "";
+    const place = matches.find(item => String(item.place_id) === id);
+    if (!place) return;
+    elements.query.value = place.place_name;
     elements.suggestions.hidden = true;
     elements.query.setAttribute("aria-expanded", "false");
-    if (place) { currentPlaces = demoPlaces; currentIsPreview = true; showPlace(id); }
+    if (filterOptionsArePreview) {
+      currentPlaces = demoPlaces;
+      currentIsPreview = true;
+      showPlace(id);
+      return;
+    }
+    await runSearch();
+    const rankedPlace = currentPlaces.find(item => String(item.place_id) === id);
+    if (rankedPlace) showPlace(id);
   }));
   elements.suggestions.querySelectorAll(".suggestion-item").forEach(button => {
-    const place = demoPlaces.find(item => String(item.place_id) === button.dataset.suggestionId);
+    const place = matches.find(item => String(item.place_id) === button.dataset.suggestionId);
     if (place) requestPhoto(place, button);
   });
 }
@@ -408,21 +482,12 @@ async function readApiJson(response, fallbackMessage) {
 }
 
 async function openAdmin() {
-  elements.adminMessage.textContent = "";
+  adminToken = "";
+  sessionStorage.removeItem("yatraAdminToken");
+  document.querySelector("#adminLoginForm").hidden = true;
   elements.adminTools.hidden = true;
+  elements.adminMessage.textContent = "Admin catalogue changes are unavailable until Engine 2 provides authenticated admin routes.";
   elements.adminDialog.showModal();
-  if (!adminToken) return;
-  try {
-    const response = await fetch(`${API_BASE}/auth/session`, { headers: { Authorization: `Bearer ${adminToken}` } });
-    const session = await readApiJson(response, "Could not verify admin access.");
-    if (session.role !== "admin") { signOutAdmin("Admin access is required. Please sign in again."); return; }
-    elements.adminTools.hidden = false;
-    await loadAdminPlaces();
-  } catch (error) {
-    if (error.status !== 401 && error.status !== 403) {
-      elements.adminMessage.textContent = error.message.includes("Failed to fetch") ? "Admin sign-in will be available when the Engine 2 API is connected." : error.message;
-    }
-  }
 }
 
 function renderAdminPlaces(places) {
