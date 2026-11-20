@@ -12,6 +12,7 @@
 - Removed stale instructions for an older mock API; the only supported live integration for this build is the teammate's Engine 2 Node API.
 - Passed `node --check app.js` and `git diff --check`. Smoke-checked the supplied Engine 2 Node server's health, categories, places, autocomplete, ranking, budget and rating filters.
 - Could not complete a browser visual check in this environment because the browser sandbox rejects the local Windows drive path; the interface still needs a local browser run alongside Engine 2.
+- Published Engine 3 to `https://github.com/VIKI7-HUB/engine-3-.git` on `main` in commit `ffbb603`.
 
 ## 2026-11-12
 

@@ -33,7 +33,7 @@ This log records the front-end work, issues encountered, and fixes. Keep adding 
 
 ### Git commit
 
-- Pending integration checks.
+- `ffbb603` — `Integrate Engine 2 API with Engine 3 UI`, pushed to the dedicated Engine 3 repository's `main` branch.
 
 ## 2026-11-12 — Front-end implementation and image fix
 
